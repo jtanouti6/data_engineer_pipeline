@@ -8,3 +8,5 @@ __pycache__/
 pipeline.tar
 *.csv
 *Zone.Identifier
+data_1.zip
+data_1*

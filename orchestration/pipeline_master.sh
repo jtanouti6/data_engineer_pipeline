@@ -8,7 +8,7 @@ mkdir -p "$LOG_DIR"                  # Création du dossier logs si nécessaire
 LOG_FILE="$LOG_DIR/pipeline_$(date '+%Y%m%d_%H%M%S').log"  # Fichier de log horodaté
 
 
-
+echo "📂 Répertoire racine détecté : $PIPELINE_ROOT"
 
 
 
@@ -55,16 +55,31 @@ initialize_data_pipeline() {
         echo "🧹 Nettoyage du dossier staging..." | tee -a "$LOG_FILE"
         rm -r "$PIPELINE_ROOT/data/staging/"*
     fi
+    # 🔢 Détection du nombre de cœurs logiques disponibles
+    CPU_CORES=$(nproc)
+    MAX_WORKERS=$((CPU_CORES))  # Laisse 1 cœur libre pour la machine
 
+    # Fallback minimum si calculé < 1
+    if [[ "$MAX_WORKERS" -lt 1 ]]; then
+      MAX_WORKERS=1
+    fi
+    yq e '.data_workers = '"$MAX_WORKERS"'' -i config/pipeline_config.yaml
+    if [ $? -ne 0 ]; then
+        echo "❌ Erreur : échec de mise à jour de config/pipeline_conf.yaml avec yq" | tee -a "$LOG_FILE"
+        exit 1
+    fi
+    echo "🧮 Détection dynamique : $MAX_WORKERS workers autorisés"
+    echo "🔍 Test d'existence : $PIPELINE_ROOT/config/pipeline_config.yaml"
     # Chargement des variables d'environnement depuis un fichier pipeline_config.yaml (facultatif ici)
     if [ -f "$PIPELINE_ROOT/config/pipeline_config.yaml" ]; then
     
         CONFIG_PATH="$PIPELINE_ROOT/config/pipeline_config.yaml"
         DATA_WORKERS=$(yq eval '.data_workers' "$CONFIG_PATH")
-        CHUNK_SIZE_MB=$(yq eval '.chunk_size_mb' "$CONFIG_PATH")
+        CHUNK_SIZE_ROWS=$(yq eval '.chunk_size_rows' "$CONFIG_PATH")
+        echo "🧪 CHUNK_SIZE_MB lu depuis YAML : '$CHUNK_SIZE_ROWS'"
         QUALITY_THRESHOLD=$(yq eval '.quality_threshold' "$CONFIG_PATH")
         PROCESSING_TIMEOUT=$(yq eval '.processing_timeout' "$CONFIG_PATH")
-        echo "⚙️  Configuration chargée : Workers=$DATA_WORKERS, Chunk=$CHUNK_SIZE_MB MB, Seuil=$QUALITY_THRESHOLD%, Timeout=$PROCESSING_TIMEOUT sec" | tee -a "$LOG_FILE"
+        echo "⚙️  Configuration chargée : Workers=$DATA_WORKERS, Chunk=$CHUNK_SIZE_ROWS Lignes, Seuil=$QUALITY_THRESHOLD%, Timeout=$PROCESSING_TIMEOUT sec" | tee -a "$LOG_FILE"
     fi
 
     # Affichage d’un résumé
@@ -81,7 +96,7 @@ scan_data_sources() {
 distribute_processing() {
     echo "⚙️ Lancement du traitement avec $DATA_WORKERS workers..." | tee -a "$LOG_FILE"
     # Appel du gestionnaire de traitement parallèle avec passage du nombre de workers
-    "$PIPELINE_ROOT/orchestration/worker_manager.sh" "$DATA_WORKERS" "$CHUNK_SIZE_MB" >> "$LOG_FILE" 2>&1
+    "$PIPELINE_ROOT/orchestration/worker_manager.sh" "$DATA_WORKERS" "$CHUNK_SIZE_ROWS" >> "$LOG_FILE" 2>&1
 }
 
 monitor_data_quality() {
@@ -174,7 +189,7 @@ consolidate_data_results          # (optionnel) Fusion des résultats => dev ok
 monitor_data_quality            # Contrôle qualité avant-traitement => dev ok
 run_alert_manager
 generate_dashboard              # Génére le tableau de bord html de la qualité de donnée
-archive_processed_data          # Archivage des fichiers traités
+# archive_processed_data          # Archivage des fichiers traités
 echo "✅ PIPELINE TERMINÉ À $(date)" | tee -a "$LOG_FILE"
 # 🧹 Correction des permissions pour le runner GitHub
 chown -R $(id -u):$(id -g) "$PIPELINE_ROOT/data" "$PIPELINE_ROOT/logs" 2>/dev/null || true

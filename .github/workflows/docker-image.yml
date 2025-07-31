@@ -15,15 +15,42 @@ jobs:
   build-and-run:
     if: github.event_name != 'pull_request' || github.event.pull_request.merged == true
     runs-on: self-hosted
+    env:
+          UID: 1000
+          GID: 1000  
+          GITHUB_WORKSPACE: ${{ github.workspace }}
     name: 🧱 Build + 🏃 Run Pipeline
 
     steps:
+
+      - name: Set UID/GID for permissions
+        run: |
+            echo "UID=1000" >> $GITHUB_ENV
+            echo "GID=1000" >> $GITHUB_ENV
       - name: 🧬 Checkout code
         uses: actions/checkout@v4
 
       - name: 🕒 Générer un tag de version (date/heure)
         id: version
         run: echo "tag=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
+      
+      - name: 🔍 Debug UID/GID & Permissions
+        run: |
+          echo "🔐 Utilisateur courant : $(whoami)"
+          echo "🆔 UID / GID :"
+          id
+          echo "📁 Permissions sur ./data et ./logs :"
+          ls -ld ./data ./logs || echo "❌ Dossiers manquants"
+      - name: 🔍 Contenu des volumes montés
+        run: |
+          echo "📦 Contenu de ./data :"
+          ls -l ./data || echo "❌ ./data introuvable"
+          echo "📦 Contenu de ./logs :"
+          ls -l ./logs || echo "❌ ./logs introuvable"
+      - name: 📁 Créer les dossiers de volume manquants
+        run: |
+          mkdir -p ./data/raw ./data/staging ./data/processed ./data/quality ./data/archive
+          mkdir -p ./logs
 
       - name: 🐳 Construire l'image Docker avec le tag versionné
         run: |
@@ -34,6 +61,10 @@ jobs:
         run: |
           docker tag img-pl-dt-eng:${{ steps.version.outputs.tag }} img-pl-dt-eng
 
+      - name: Fix permissions before Docker run
+        run: |
+          sudo chown -R $UID:$GID ./data ./logs || true
+
       - name: 🚀 Exécuter le pipeline via le service docker-compose
         run: |
           docker compose run srv-pl-dt-eng
@@ -43,9 +74,16 @@ jobs:
         with:
           name: dashboard-et-logs
           path: |
-            data/processed/dashboard_quality.html
-            logs/*.log
+            /home/administrateur/data-engineer-pipeline/data/quality/*.html
+            /home/administrateur/data-engineer-pipeline/data/joined/*.*
+            /home/administrateur/data-engineer-pipeline/logs/*.log
           if-no-files-found: warn
       - name: 🔧 Corriger les droits d'accès
         run: |
             sudo chown -R administrateur:administrateur data/ logs/
+      - name: 📦 Vérifier les fichiers de sortie
+        run: |
+          echo "📁 Contenu de data/ :"
+          find ./data -type f
+          echo "📁 Contenu de logs/ :"
+          find ./logs -type f

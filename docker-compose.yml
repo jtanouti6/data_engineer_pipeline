@@ -3,15 +3,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        USER_ID: ${UID}
-        GROUP_ID: ${GID}
     image: img-pl-dt-eng
     container_name: ctnr-pl-dt-eng
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-    restart: "no"
+      - /home/administrateur/data-engineer-pipeline/data:/app/data
+      - /home/administrateur/data-engineer-pipeline/logs:/app/logs
+    user: "1000:1000"   # ← Obligatoire !
     environment:
-      - USER_ID=${UID}
-      - GROUP_ID=${GID}
+      - USER_ID=1000
+      - GROUP_ID=1000

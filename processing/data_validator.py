@@ -36,7 +36,10 @@ try:
     if ext == ".csv":
         df = pd.read_csv(args.input)
     elif ext == ".json":
-        df = pd.read_json(args.input, lines=False)  # ajuste si JSONL
+            try:
+                df = pd.read_json(args.input, lines=True)
+            except ValueError:
+                df = pd.read_json(args.input, lines=False)
     elif ext == ".xlsx":
         df = pd.read_excel(args.input, engine="openpyxl")
     else:
