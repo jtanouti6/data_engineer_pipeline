@@ -3,33 +3,26 @@
 # 🧪 quality_monitor.sh - Contrôle Qualité des Données
 # ======================================
 
-# 📍 Chemins
 PIPELINE_ROOT="$(dirname "$0")/.."
 STAGING_DIR="$PIPELINE_ROOT/data/staging"
 CONFIG_DIR="$PIPELINE_ROOT/config"
-QUALITY_DIR="$PIPELINE_ROOT/data/quality"
-QUALITY_LOG="$QUALITY_DIR/quality_alert.txt"
+QUALITY_LOG="$PIPELINE_ROOT/data/quality/quality_alert.txt"
+mkdir -p "$(dirname "$QUALITY_LOG")"
 
-mkdir -p "$QUALITY_DIR"
+# Chargement des seuils
+QUALITY_THRESHOLD=$(yq '.global_threshold' "$CONFIG_DIR/quality_thresholds.yaml")
+
+# Initialisation
 > "$QUALITY_LOG"
 
-# ✅ Paramètres : seuil + workers
-QUALITY_THRESHOLD="$1"
-QUALITY_WORKERS="$2"
+echo "🔍 Début des contrôles qualité sur $STAGING_DIR"
 
-# Fallbacks
-[ -z "$QUALITY_THRESHOLD" ] && QUALITY_THRESHOLD=90
-[ -z "$QUALITY_WORKERS" ] && QUALITY_WORKERS=4
-
-echo "📊 Contrôle Qualité : Seuil=$QUALITY_THRESHOLD% | Workers=$QUALITY_WORKERS"
-echo "🔍 Dossier à analyser : $STAGING_DIR"
-
-# Fonction de validation pour un fichier
-validate_file() {
-    file="$1"
+# Parcours des fichiers en staging
+find "$STAGING_DIR" -type f | while read -r file; do
     filename=$(basename "$file")
+    echo "➡️  Analyse de $filename"
 
-    # Déduire le type de source
+    # Déduire le type (logs, sessions, users, etc.)
     if [[ "$filename" == api_logs_* ]]; then
         source_type="logs"
     elif [[ "$filename" == sessions_* ]]; then
@@ -39,33 +32,30 @@ validate_file() {
     elif [[ "$filename" == products_* ]]; then
         source_type="products"
     else
-        echo "⚠️  Type inconnu : $filename" >> "$QUALITY_LOG"
-        return
+        echo "⚠️  Type inconnu (tag) : $filename" >> "$QUALITY_LOG"
+        continue
     fi
 
     # Appel du validateur Python
+    # Appel du script Python de validation (nouvelle version)
     python3 "$PIPELINE_ROOT/processing/data_validator.py" \
         --input "$file" \
         --source "$source_type" \
-        --schemas "$CONFIG_DIR/data_schemas.json" \
-        --rules "$CONFIG_DIR/business_rules.yaml" \
         --threshold "$QUALITY_THRESHOLD" \
         --check-schema \
         --check-anomalies \
         --check-coherence
 
+
+    # Récupération du code retour
     if [[ $? -ne 0 ]]; then
         echo "🚫 Fichier rejeté : $filename" >> "$QUALITY_LOG"
     else
         echo "✅ Qualité OK : $filename"
     fi
-}
 
-export -f validate_file
-export PIPELINE_ROOT CONFIG_DIR QUALITY_LOG QUALITY_THRESHOLD
+done
 
-# Lancement en parallèle avec xargs
-find "$STAGING_DIR" -type f | xargs -P "$QUALITY_WORKERS" -I{} bash -c 'validate_file "$@"' _ {}
+echo "🧪 Contrôle qualité terminé."
 
-echo "✅ Contrôle qualité terminé."
 exit 0

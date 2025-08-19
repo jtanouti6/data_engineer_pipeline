@@ -101,7 +101,7 @@ distribute_processing() {
 
 monitor_data_quality() {
     echo "🧪 Vérification qualité..." | tee -a "$LOG_FILE"
-    bash "$PIPELINE_ROOT/orchestration/quality_monitor.sh" "$QUALITY_THRESHOLD" >> "$LOG_FILE" 2>&1
+    bash "$PIPELINE_ROOT/orchestration/quality_monitor.sh" "$QUALITY_THRESHOLD" "$DATA_WORKERS" >> "$LOG_FILE" 2>&1
 }
 run_alert_manager() {
     echo "📣 Analyse des alertes qualité..." | tee -a "$LOG_FILE"

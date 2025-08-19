@@ -1,0 +1,21 @@
+ 1. Installer dos2unix (si ce n’est pas déjà fait)
+sudo apt-get update && sudo apt-get install -y dos2unix
+
+ 2. Corriger tous les fichiers .sh, .py, .json, .yaml du projet
+find . -type f \( -name "*.sh" -o -name "*.py" -o -name "*.json" -o -name "*.yaml" -o -name "*.yml" \) -exec dos2unix {} \;
+
+ 3. Ajouter un .gitattributes pour forcer les fins de ligne LF (à la racine du projet)
+cat <<EOF > .gitattributes
+# Force les fins de ligne Unix (LF) sur tous les fichiers texte
+* text=auto eol=lf
+EOF
+
+ 4. Réinitialiser les fins de ligne dans Git (une seule fois)
+git add --renormalize .
+git commit -m "🔧 Normalisation des fins de ligne en LF"
+
+ 5. (Facultatif) Désactiver la conversion CRLF automatique par Git (si tu es sur Windows)
+git config --global core.autocrlf false
+
+🔍 (Facultatif) Vérifier s’il reste des retours \r (CR)
+grep -rl $'\r' . | grep -v .git
