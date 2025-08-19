@@ -47,8 +47,6 @@ validate_file() {
     python3 "$PIPELINE_ROOT/processing/data_validator.py" \
         --input "$file" \
         --source "$source_type" \
-        --schemas "$CONFIG_DIR/data_schemas.json" \
-        --rules "$CONFIG_DIR/business_rules.yaml" \
         --threshold "$QUALITY_THRESHOLD" \
         --check-schema \
         --check-anomalies \

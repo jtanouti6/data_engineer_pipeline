@@ -76,10 +76,11 @@ initialize_data_pipeline() {
         CONFIG_PATH="$PIPELINE_ROOT/config/pipeline_config.yaml"
         DATA_WORKERS=$(yq eval '.data_workers' "$CONFIG_PATH")
         CHUNK_SIZE_ROWS=$(yq eval '.chunk_size_rows' "$CONFIG_PATH")
+        MAX_FILES=$(yq eval '.max_files' "$CONFIG_PATH")
         echo "🧪 CHUNK_SIZE_ROWS lu depuis YAML : '$CHUNK_SIZE_ROWS'"
         QUALITY_THRESHOLD=$(yq eval '.quality_threshold' "$CONFIG_PATH")
         PROCESSING_TIMEOUT=$(yq eval '.processing_timeout' "$CONFIG_PATH")
-        echo "⚙️  Configuration chargée : Workers=$DATA_WORKERS, Chunk=$CHUNK_SIZE_ROWS Lignes, Seuil=$QUALITY_THRESHOLD%, Timeout=$PROCESSING_TIMEOUT sec" | tee -a "$LOG_FILE"
+        echo "⚙️  Configuration chargée : Max_files=$MAX_FILES, Workers=$DATA_WORKERS, Chunk=$CHUNK_SIZE_ROWS Lignes, Seuil=$QUALITY_THRESHOLD%, Timeout=$PROCESSING_TIMEOUT sec" | tee -a "$LOG_FILE"
     fi
 
     # Affichage d’un résumé
@@ -90,7 +91,7 @@ initialize_data_pipeline() {
 scan_data_sources() {
     echo "🔎 Scan des nouvelles sources de données..." | tee -a "$LOG_FILE"
     # Appel du script dédié à la découverte des fichiers à traiter
-    "$PIPELINE_ROOT/orchestration/data_discovery.sh" >> "$LOG_FILE" 2>&1
+    "$PIPELINE_ROOT/orchestration/data_discovery.sh" "$MAX_FILES" >> "$LOG_FILE" 2>&1
 }
 
 distribute_processing() {

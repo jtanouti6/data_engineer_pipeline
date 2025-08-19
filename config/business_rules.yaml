@@ -68,7 +68,7 @@ users:
     min_value: 0.0
 
   gender:
-    allowed_values: ["M", "F", "O"]  # O pour autre
+    allowed_values: ["M", "F", "Other"]  # O pour autre
 
   # 📧 Exemple imaginaire : emails internes interdits
   email:

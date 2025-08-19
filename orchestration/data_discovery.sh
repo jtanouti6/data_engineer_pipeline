@@ -17,32 +17,36 @@ mkdir -p "$ARCHIVE_DIR"
 echo "🟡 Démarrage du scan dans $RAW_DIR" | tee -a "$LOG_FILE"
 
 # Nombre de fichiers à extraire
-MAX_FILES=5000
+MAX_FILES_TO_PROC="$1"
+[ -z "$MAX_FILES_TO_PROC" ] && MAX_FILES_TO_PROC=150
 API_LOGS_ZIP="$RAW_DIR/api_logs.zip"
 API_LOGS_DONE="$RAW_DIR/api_logs.zip.done"
 API_LOGS_TMP="$STAGING_DIR/api_logs_tmp"
 API_LOGS_OUT="$STAGING_DIR/api_logs"
 
+# Nombre de workers en parallèle pour la décompression
+DISCOVERY_WORKERS="$1"
+[ -z "$DISCOVERY_WORKERS" ] && DISCOVERY_WORKERS=4  # fallback si absent
+
 if [ -f "$API_LOGS_ZIP" ] && [ ! -f "$API_LOGS_DONE" ]; then
-    echo "📦 Extraction optimisée de api_logs.zip (max $MAX_FILES fichiers)" | tee -a "$LOG_FILE"
+    echo "📦 Extraction optimisée de api_logs.zip (max $MAX_FILES_TO_PROC fichiers)" | tee -a "$LOG_FILE"
     mkdir -p "$API_LOGS_TMP" "$API_LOGS_OUT"
 
     # 🗂️ Liste les N premiers fichiers .json.gz dans l’archive
-    FILES_TO_EXTRACT=$(unzip -Z1 "$API_LOGS_ZIP" '*.json.gz' | head -n "$MAX_FILES")
+    FILES_TO_EXTRACT=$(unzip -Z1 "$API_LOGS_ZIP" '*.json.gz' | head -n "$MAX_FILES_TO_PROC")
 
     # 📤 Extraction d’un coup
     echo "$FILES_TO_EXTRACT" | xargs -I {} unzip -j "$API_LOGS_ZIP" "{}" -d "$API_LOGS_TMP" >> "$LOG_FILE"
 
-    # 🚀 Décompression + conversion en parallèle (4 fichiers à la fois)
-    find "$API_LOGS_TMP" -name '*.json.gz' | xargs -P 4 -I {} bash -c '
+    export API_LOGS_OUT  # nécessaire pour le sous-processus
+    find "$API_LOGS_TMP" -name '*.json.gz' | parallel -j "$DISCOVERY_WORKERS" '
         gzfile="{}"
         filename=$(basename "$gzfile" .gz)
-        json_out="'$API_LOGS_OUT'/$filename"
+        json_out="$API_LOGS_OUT/$filename"
 
         first_char=$(gunzip -c "$gzfile" | head -c 1)
 
         if [[ "$first_char" == "[" ]]; then
-            # JSON array à transformer en JSON lines
             if gunzip -c "$gzfile" | jq -c ".[]" > "$json_out"; then
                 echo "✅ Décompressé + converti JSON array : $filename"
             else
@@ -50,7 +54,6 @@ if [ -f "$API_LOGS_ZIP" ] && [ ! -f "$API_LOGS_DONE" ]; then
                 rm -f "$json_out"
             fi
         else
-            # JSON lines direct
             if gunzip -c "$gzfile" > "$json_out"; then
                 echo "✅ Décompressé JSON lines : $filename"
             else

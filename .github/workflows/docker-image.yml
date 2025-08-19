@@ -33,20 +33,7 @@ jobs:
       - name: 🕒 Générer un tag de version (date/heure)
         id: version
         run: echo "tag=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
-      
-      - name: 🔍 Debug UID/GID & Permissions
-        run: |
-          echo "🔐 Utilisateur courant : $(whoami)"
-          echo "🆔 UID / GID :"
-          id
-          echo "📁 Permissions sur ./data et ./logs :"
-          ls -ld ./data ./logs || echo "❌ Dossiers manquants"
-      - name: 🔍 Contenu des volumes montés
-        run: |
-          echo "📦 Contenu de ./data :"
-          ls -l ./data || echo "❌ ./data introuvable"
-          echo "📦 Contenu de ./logs :"
-          ls -l ./logs || echo "❌ ./logs introuvable"
+
       - name: 📁 Créer les dossiers de volume manquants
         run: |
           mkdir -p ./data/raw ./data/staging ./data/processed ./data/quality ./data/archive
@@ -81,9 +68,4 @@ jobs:
       - name: 🔧 Corriger les droits d'accès
         run: |
             sudo chown -R administrateur:administrateur data/ logs/
-      - name: 📦 Vérifier les fichiers de sortie
-        run: |
-          echo "📁 Contenu de data/ :"
-          find ./data -type f
-          echo "📁 Contenu de logs/ :"
-          find ./logs -type f
+            
