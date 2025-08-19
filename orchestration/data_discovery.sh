@@ -16,51 +16,55 @@ mkdir -p "$ARCHIVE_DIR"
 
 echo "🟡 Démarrage du scan dans $RAW_DIR" | tee -a "$LOG_FILE"
 
-# 1. Traitement de l'archive api_logs.zip (limitée à 10 fichiers .json.gz décompressés)
+# Nombre de fichiers à extraire
+MAX_FILES=5000
 API_LOGS_ZIP="$RAW_DIR/api_logs.zip"
 API_LOGS_DONE="$RAW_DIR/api_logs.zip.done"
 API_LOGS_TMP="$STAGING_DIR/api_logs_tmp"
+API_LOGS_OUT="$STAGING_DIR/api_logs"
 
 if [ -f "$API_LOGS_ZIP" ] && [ ! -f "$API_LOGS_DONE" ]; then
-    echo "📦 Extraction limitée de api_logs.zip (10 fichiers)" | tee -a "$LOG_FILE"
-    mkdir -p "$API_LOGS_TMP" "$STAGING_DIR/api_logs"
-    
-    # Liste les fichiers .json.gz dans l'archive et extrait les 10 premiers
-    unzip -Z1 "$API_LOGS_ZIP" '*.json.gz' | while read -r file; do
-        unzip -j "$API_LOGS_ZIP" "$file" -d "$API_LOGS_TMP" >> "$LOG_FILE"
-    done
+    echo "📦 Extraction optimisée de api_logs.zip (max $MAX_FILES fichiers)" | tee -a "$LOG_FILE"
+    mkdir -p "$API_LOGS_TMP" "$API_LOGS_OUT"
 
-    # Décompression + conversion conditionnelle en JSON Lines
-    for gzfile in "$API_LOGS_TMP"/*.json.gz; do
+    # 🗂️ Liste les N premiers fichiers .json.gz dans l’archive
+    FILES_TO_EXTRACT=$(unzip -Z1 "$API_LOGS_ZIP" '*.json.gz' | head -n "$MAX_FILES")
+
+    # 📤 Extraction d’un coup
+    echo "$FILES_TO_EXTRACT" | xargs -I {} unzip -j "$API_LOGS_ZIP" "{}" -d "$API_LOGS_TMP" >> "$LOG_FILE"
+
+    # 🚀 Décompression + conversion en parallèle (4 fichiers à la fois)
+    find "$API_LOGS_TMP" -name '*.json.gz' | xargs -P 4 -I {} bash -c '
+        gzfile="{}"
         filename=$(basename "$gzfile" .gz)
-        json_out="$STAGING_DIR/api_logs/$filename"
+        json_out="'$API_LOGS_OUT'/$filename"
 
-        # Lire les premiers caractères du fichier décompressé pour détecter le format
         first_char=$(gunzip -c "$gzfile" | head -c 1)
 
         if [[ "$first_char" == "[" ]]; then
-            # Format JSON array → conversion nécessaire
-            if gunzip -c "$gzfile" | jq -c '.[]' > "$json_out"; then
-                echo "✅ Décompressé + converti JSON array → lines : $filename" | tee -a "$LOG_FILE"
+            # JSON array à transformer en JSON lines
+            if gunzip -c "$gzfile" | jq -c ".[]" > "$json_out"; then
+                echo "✅ Décompressé + converti JSON array : $filename"
             else
-                echo "❌ Échec de conversion (JSON array mal formé ?) : $filename" | tee -a "$LOG_FILE"
+                echo "❌ Conversion échouée (array mal formé) : $filename"
                 rm -f "$json_out"
             fi
         else
-            # Format JSON lines → pas de conversion
+            # JSON lines direct
             if gunzip -c "$gzfile" > "$json_out"; then
-                echo "✅ Décompressé (JSON lines direct) : $filename" | tee -a "$LOG_FILE"
+                echo "✅ Décompressé JSON lines : $filename"
             else
-                echo "❌ Échec de décompression brute : $filename" | tee -a "$LOG_FILE"
+                echo "❌ Décompression échouée : $filename"
                 rm -f "$json_out"
             fi
         fi
-    done
+    '
 
-
+    # Nettoyage
     rm -rf "$API_LOGS_TMP"
     touch "$API_LOGS_DONE"
-    echo "✅ api_logs.zip extrait (10 fichiers) et marqué .done" | tee -a "$LOG_FILE"
+    echo "✅ api_logs.zip traité et marqué .done" | tee -a "$LOG_FILE"
+
 else
     echo "⏭️  api_logs.zip déjà traité ou absent" | tee -a "$LOG_FILE"
 fi

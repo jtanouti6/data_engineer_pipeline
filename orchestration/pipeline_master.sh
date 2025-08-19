@@ -76,7 +76,7 @@ initialize_data_pipeline() {
         CONFIG_PATH="$PIPELINE_ROOT/config/pipeline_config.yaml"
         DATA_WORKERS=$(yq eval '.data_workers' "$CONFIG_PATH")
         CHUNK_SIZE_ROWS=$(yq eval '.chunk_size_rows' "$CONFIG_PATH")
-        echo "🧪 CHUNK_SIZE_MB lu depuis YAML : '$CHUNK_SIZE_ROWS'"
+        echo "🧪 CHUNK_SIZE_ROWS lu depuis YAML : '$CHUNK_SIZE_ROWS'"
         QUALITY_THRESHOLD=$(yq eval '.quality_threshold' "$CONFIG_PATH")
         PROCESSING_TIMEOUT=$(yq eval '.processing_timeout' "$CONFIG_PATH")
         echo "⚙️  Configuration chargée : Workers=$DATA_WORKERS, Chunk=$CHUNK_SIZE_ROWS Lignes, Seuil=$QUALITY_THRESHOLD%, Timeout=$PROCESSING_TIMEOUT sec" | tee -a "$LOG_FILE"
