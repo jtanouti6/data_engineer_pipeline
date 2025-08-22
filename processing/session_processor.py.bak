@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-# Analyse des sessions utilisateur (lecture, nettoyage, enrichissement/jointure, agrégation, export)
+# Analyse des sessions utilisateur (lecture, nettoyage, enrichissement, agrégation, export)
 
 import sys
 import argparse
 import pandas as pd
 import os
+from datetime import datetime
 
 # 📁 Ajout du chemin racine du projet pour permettre l'import de modules dans /transformations
 pipeline_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -13,16 +14,18 @@ sys.path.insert(0, pipeline_root)
 # ==============================
 # 🎯 Lecture des arguments CLI
 # ==============================
-parser = argparse.ArgumentParser(description="Traitement des sessions web (chunking + enrichissement combiné)")
+
+parser = argparse.ArgumentParser(description="Analyse des sessions web")
 parser.add_argument('--input', required=True, help="Fichier CSV des sessions utilisateur")
-parser.add_argument('--chunksize', type=int, default=None, help="Taille des chunks (lignes) pour gros fichiers")
+parser.add_argument('--chunksize', type=int, default=None, help="Taille des chunks à lire (nombre de lignes)")
 args = parser.parse_args()
 input_path = args.input
-chunksize = args.chunksize  # None si non fourni
+chunksize = args.chunksize  # Par défaut None si non fourni
 
 # ==============================
 # 📥 Vérification du fichier d'entrée
 # ==============================
+
 if not os.path.exists(input_path):
     print(f"❌ Fichier introuvable : {input_path}")
     sys.exit(1)
@@ -30,39 +33,38 @@ if not os.path.exists(input_path):
 # ==============================
 # 📦 Imports des fonctions métiers
 # ==============================
+
 from transformations.data_cleaner import clean_session_data
-from transformations.data_enricher import enrich_session_data   # <- ex-fct_combined_sessions
+from transformations.data_enricher import enrich_session_data
 from transformations.data_aggregator import aggregate_session_data
 from transformations.data_formatter import export_session_data_partitioned
 
-# ==============================
-# 🧱 Traitement (avec chunking optionnel)
-# ==============================
+# Liste qui va contenir les DataFrames traités si on utilise les chunks
 processed_chunks = []
+
+# ==============================
+# 📚 Lecture du CSV par chunks (si demandé)
+# ==============================
 
 try:
     if chunksize:
-        # Lecture + traitement par morceaux
+        # Lecture et traitement par morceaux (pour les gros fichiers)
         for i, chunk in enumerate(pd.read_csv(input_path, chunksize=chunksize)):
             print(f"🔹 Chunk {i+1} lu ({len(chunk)} lignes)")
 
-            # Nettoyage de base (types, colonnes, valeurs aberrantes simples…)
+            # Nettoyage du chunk
             chunk = clean_session_data(chunk)
 
-            # Enrichissement COMBINÉ :
-            # - features sessions (duration_min, device_category, traffic_source, …)
-            # - jointure avec users_enriched / logs_aggregated en interne
-            #
-            # ⚠️ en passant input_path, enrich_session_data fera un 'append'
-            #     vers data/processed/enriched/sessions_enriched.csv de façon sûre.
-            chunk = enrich_session_data(chunk, input_path=input_path)
+            # Enrichissement (ajout d'infos dérivées ou calculées)
+            chunk = enrich_session_data(chunk, input_path)
 
+            # On stocke le résultat pour concaténation ultérieure
             processed_chunks.append(chunk)
     else:
-        # Lecture en mémoire si pas de chunk
+        # Lecture directe en mémoire si pas de chunksize spécifié
         df = pd.read_csv(input_path)
         df = clean_session_data(df)
-        df = enrich_session_data(df, input_path=input_path)
+        df = enrich_session_data(df, input_path)
         processed_chunks.append(df)
 
 except Exception as e:
@@ -72,27 +74,26 @@ except Exception as e:
 # ==============================
 # 🧩 Fusion des morceaux
 # ==============================
+
 df_all = pd.concat(processed_chunks, ignore_index=True)
 
 # ==============================
 # 📊 Agrégation multi-dimensionnelle
 # ==============================
-# Dimensions disponibles/pertinentes. Tu peux en ajouter/retirer selon tes besoins.
+
+# Dimensions possibles sur lesquelles on veut des indicateurs agrégés
 dimensions = ["device_type", "browser", "referrer", "country", "city", "conversion"]
-try:
-    df_agg = aggregate_session_data(df_all, dimensions)
-except Exception as e:
-    print(f"❌ Erreur lors de l’agrégation des sessions : {e}")
-    sys.exit(1)
+df_agg = aggregate_session_data(df_all, dimensions)
 
 # ==============================
 # 💾 Export final partitionné par date
 # ==============================
-try:
-    export_session_data_partitioned(df_agg, input_path)
-except Exception as e:
-    print(f"❌ Erreur lors de l’export partitionné : {e}")
-    sys.exit(1)
+
+export_session_data_partitioned(df_agg, input_path)
+
+# ==============================
+# ✅ Fin du traitement
+# ==============================
 
 print("✅ Traitement des sessions terminé.")
 sys.exit(0)

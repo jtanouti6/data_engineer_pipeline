@@ -79,51 +79,81 @@ def enrich_api_logs(df: pd.DataFrame, input_path: str = None) -> pd.DataFrame:
 # ==============================
 # 🧭 Sessions Utilisateurs
 # ==============================
-def enrich_session_data(df_sessions: pd.DataFrame, df_users_enriched: pd.DataFrame, df_logs_enriched: pd.DataFrame) -> pd.DataFrame:
-    # 1) Normaliser les clés (très important)
-    for d in (df_sessions, df_users_enriched, df_logs_enriched):
-        if "user_id" in d.columns:
-            d["user_id"] = d["user_id"].astype("string").str.strip()
-        if "session_id" in d.columns:
-            d["session_id"] = d["session_id"].astype("string").str.strip()
 
-    # 2) Sélection des colonnes users utiles (évite collisions de noms)
-    user_cols = ["user_id", "customer_type", "loyalty_score", "days_since_last_login"]
-    users_sel = df_users_enriched.loc[:, [c for c in user_cols if c in df_users_enriched.columns]]
+def enrich_session_data(df: pd.DataFrame, input_path: str = None) -> pd.DataFrame:
+    """
+    Enrichissement des sessions :
+    - start_time, end_time -> datetime
+    - duration_min
+    - traffic_source (referrer)
+    - device_category (device_type)
+    - is_bounce, is_conversion, abandoned_cart
+    - date depuis start_time
+    - Export append -> data/processed/enriched/sessions_enriched.csv si input_path fourni
+    """
+    # Normalisations
+    if "start_time" in df.columns:
+        df["start_time"] = _ensure_datetime(df["start_time"])
+    if "end_time" in df.columns:
+        df["end_time"] = _ensure_datetime(df["end_time"])
 
-    # 3) Agréger les logs au niveau session_id (1 ligne par session)
-    #    Adapte librement les KPI selon tes besoins
-    if "session_id" in df_logs_enriched.columns:
-        logs_agg = (
-            df_logs_enriched
-            .assign(is_error=lambda x: pd.to_numeric(x.get("status_code", pd.Series([None]*len(x))), errors="coerce") >= 400)
-            .groupby("session_id", dropna=False)
-            .agg(
-                nb_requests=("request_id", "count") if "request_id" in df_logs_enriched.columns else ("endpoint", "count"),
-                error_requests=("is_error", "sum"),
-                avg_response_ms=("response_time_ms", "mean"),
-                first_log=("timestamp", "min"),
-                last_log=("timestamp", "max"),
-            )
-            .reset_index()
-        )
-        # Assure un type datetime propre si timestamp est une string
-        for col in ("first_log", "last_log"):
-            if col in logs_agg.columns:
-                logs_agg[col] = pd.to_datetime(logs_agg[col], errors="coerce")
-    else:
-        # Si pas de session_id dans les logs, on ne peut pas agréger correctement
-        logs_agg = pd.DataFrame(columns=["session_id"])
+    # Durée
+    if {"start_time", "end_time"} <= set(df.columns):
+        df["duration_min"] = (df["end_time"] - df["start_time"]).dt.total_seconds() / 60
 
-    # 4) Jointures (toujours partir des sessions)
-    out = (
-        df_sessions
-        .merge(users_sel, on="user_id", how="left", validate="m:1")   # 1 user pour N sessions
-        .merge(logs_agg, on="session_id", how="left", validate="1:1") # 1 session pour 1 agrégat de logs
-    )
+    # Traffic source
+    def _classify_referrer(ref):
+        if not isinstance(ref, str):
+            return "unknown"
+        r = ref.lower()
+        if "ads" in r:
+            return "ads"
+        if "facebook" in r or "social" in r:
+            return "social"
+        if "direct" in r:
+            return "direct"
+        if "email" in r:
+            return "email"
+        return "other"
 
-    return out
+    if "referrer" in df.columns:
+        df["traffic_source"] = df["referrer"].apply(_classify_referrer)
 
+    # Device category
+    def _classify_device(device):
+        if not isinstance(device, str):
+            return "unknown"
+        d = device.lower()
+        if d in ("desktop", "laptop"):
+            return "desktop"
+        if d in ("tablet",):
+            return "tablet"
+        if d in ("mobile", "phone", "android", "ios"):
+            return "mobile"
+        return "unknown"
+
+    if "device_type" in df.columns:
+        df["device_category"] = df["device_type"].apply(_classify_device)
+
+    # Comportements
+    if "bounce_rate" in df.columns:
+        df["is_bounce"] = df["bounce_rate"].astype(bool)
+    if "conversion" in df.columns:
+        df["is_conversion"] = df["conversion"].astype(bool)
+    if {"products_added_to_cart", "conversion"} <= set(df.columns):
+        df["abandoned_cart"] = (pd.to_numeric(df["products_added_to_cart"], errors="coerce").fillna(0) > 0) & (~df["conversion"].astype(bool))
+
+    # Date
+    if "start_time" in df.columns:
+        df["date"] = df["start_time"].dt.date.astype("string")
+
+    # Export append si demandé
+    if input_path:
+        out = os.path.join(_enriched_dir(), "sessions_enriched.csv")
+        _safe_append_csv(df, out)
+        print(f"💾 Données de session enrichies (append) : {out}")
+
+    return df
 
 # ==============================
 # 📦 Produits
