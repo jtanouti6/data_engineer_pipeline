@@ -42,7 +42,7 @@ processed_chunks = []
 for i, chunk in enumerate(chunks):
     print(f"🔢 Traitement du chunk {i + 1}...")
     chunk_cleaned = clean_api_logs(chunk)
-    chunk_enriched = enrich_api_logs(chunk_cleaned, input_path)
+    chunk_enriched = enrich_api_logs(chunk_cleaned, input_path, append=True)
     processed_chunks.append(chunk_enriched)
 
 # 🧱 Concaténation + agrégation
